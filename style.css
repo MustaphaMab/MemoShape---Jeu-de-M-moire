@@ -1,0 +1,195 @@
+/* =====================================================
+    FICHIER style.css : l'apparence du jeu
+    (il est relié à index.html par la balise <link>)
+    ===================================================== */
+
+  /* =====================================================
+    1. COULEURS
+    On les range ici, une seule fois, avec un nom.
+    Ensuite on les utilise partout avec var(--nom).
+    Pour changer une couleur, il suffit de la changer ici.
+    ===================================================== */
+  :root {
+    --fond: rgb(19, 2, 80);  /* couleur de fond de la page */
+    --texte: #f1eaf7;        /* couleur du texte (clair, car le fond est sombre) */
+    --bouton: #f1eaf7;       /* fond du bouton "Jouer" */
+    --texte-bouton: #171320; /* texte du bouton "Jouer" */
+
+    color-scheme: dark;      /* le jeu est toujours sombre : le navigateur ne recolore rien */
+  }
+
+
+  /* =====================================================
+    2. PAGE
+    ===================================================== */
+
+  /* Pour tous les éléments : le padding est compté dans la taille */
+  * {
+    box-sizing: border-box;
+  }
+
+  /* La page prend toute la hauteur de l'écran, sans marge.
+    Le padding évite que le contenu soit caché par l'encoche
+    des iPhone (env(safe-area-inset-...)). */
+  html {
+    height: 100%;
+    margin: 0;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* Le corps de la page : tout est centré au milieu de l'écran,
+    les éléments sont empilés les uns sous les autres. */
+  body {
+    height: 100%;
+    margin: 0;
+    padding: 12px;
+
+    background: var(--fond);
+    color: var(--texte);
+    font-family: Georgia, "Times New Roman", serif;
+
+    display: flex;
+    flex-direction: column;   /* empile de haut en bas */
+    align-items: center;      /* centre horizontalement */
+    justify-content: center;  /* centre verticalement */
+    gap: 14px;                /* espace entre chaque élément */
+
+    touch-action: manipulation; /* évite le zoom au double-tap sur mobile */
+    -webkit-tap-highlight-color: transparent; /* pas de rectangle clair au toucher, nulle part sur la page */
+    user-select: none;          /* empêche de sélectionner le texte en jouant */
+    -webkit-user-select: none;
+    overflow: hidden;           /* pas de barre de défilement */
+  }
+
+  /* =====================================================
+    3. TITRE ET SCORES
+    ===================================================== */
+  h1 {
+    margin: 0;
+    font-size: clamp(1.7rem, 8.5vw, 3rem);  /* grand sur ordinateur, plus petit sur téléphone pour tenir sur une ligne */
+    text-align: center;                     /* si le titre passe sur 2 lignes, il reste centré */
+    max-width: 100%;
+  }
+
+  /* La ligne "Niveau / Record" : les deux textes côte à côte */
+  .barre-score {
+    display: flex;
+    gap: 24px;
+    font-size: 1.1rem;
+  }
+
+  /* =====================================================
+    4. LES QUATRE FLÈCHES
+    La zone de jeu est une grille de 3 colonnes x 3 lignes.
+    Les flèches sont placées en croix, le message est au centre.
+    ===================================================== */
+  #grille {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr); /* 3 colonnes égales */
+    grid-template-rows: repeat(3, 1fr);    /* 3 lignes égales */
+    gap: 10px;
+    width: min(90vw, 52vh, 360px);         /* la plus petite de ces 3 tailles */
+    aspect-ratio: 1;                       /* la grille reste carrée */
+  }
+
+  /* Style commun aux 4 boutons-flèches */
+  .fleche {
+    display: flex;             /* centre le triangle dans le bouton */
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    border-radius: 16px;
+    color: #fafafa;            /* couleur du triangle et de la lueur */
+    cursor: pointer;
+    box-shadow: 0 0 25px currentColor;   /* lueur autour du bouton */
+
+    /* Supprime le rectangle clair que le navigateur du téléphone dessine quand on touche un bouton
+       (c'est lui qui apparaissait en bande claire sous les flèches) */
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-appearance: none;
+    appearance: none;
+    outline: none;
+    overflow: hidden;
+    -webkit-mask-image: -webkit-radial-gradient(white, black);
+
+    opacity: 0.35;  /* flèche éteinte : à moitié transparente */
+    transition: opacity 0.08s, transform 0.08s;
+  }
+
+  /* Effet "enfoncé" quand on appuie (cette règle doit rester EN DEHORS du bloc .fleche) */
+  .fleche:active { transform: translateY(4px); }
+
+  /* Le triangle de chaque flèche est dessiné ici, il ne dépend d'aucune police :
+     il est donc identique sur ordinateur et sur téléphone. */
+  .fleche::before {
+    content: "";
+    display: block;
+    width: 45%;
+    height: 45%;
+    background-color: currentColor;
+  }
+  #haut::before   {
+    -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><polygon points="50,0 100,100 0,100"/></svg>') no-repeat center / contain;
+    mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><polygon points="50,0 100,100 0,100"/></svg>') no-repeat center / contain;
+  }
+  #bas::before    {
+    -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><polygon points="0,0 100,0 50,100"/></svg>') no-repeat center / contain;
+    mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><polygon points="0,0 100,0 50,100"/></svg>') no-repeat center / contain;
+  }
+  #gauche::before {
+    -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><polygon points="100,0 100,100 0,50"/></svg>') no-repeat center / contain;
+    mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><polygon points="100,0 100,100 0,50"/></svg>') no-repeat center / contain;
+  }
+  #droite::before {
+    -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><polygon points="0,0 100,50 0,100"/></svg>') no-repeat center / contain;
+    mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><polygon points="0,0 100,50 0,100"/></svg>') no-repeat center / contain;
+  }
+
+  /* Flèche allumée (classe ajoutée par le JavaScript) : opaque et un peu plus grosse */
+  .fleche.allumee {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+
+  /* Position (ligne / colonne) et couleur de chaque flèche */
+  #haut   { grid-area: 1 / 2; background: blue; }
+  #gauche { grid-area: 2 / 1; background: orange; }
+  #droite { grid-area: 2 / 3; background: green;  }
+  #bas    { grid-area: 3 / 2; background: red;  }
+
+  /* Le message au centre de la croix ("Regardez…", "À vous !", etc.) */
+  #message {
+    grid-area: 2 / 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: 0.95rem;
+    line-height: 1.2;
+  }
+
+  /* =====================================================
+    5. BOUTON "JOUER" ET PETIT TEXTE
+    ===================================================== */
+  #bouton-jouer {
+    padding: 12px 24px;
+    font-size: 1.1rem;
+    font-family: inherit;
+    color: var(--texte-bouton);
+    background: var(--bouton);
+    border: 0;
+    border-radius: 10px;
+    cursor: pointer;
+  }
+
+  /* Le petit texte d'information sous le bouton */
+  small {
+    max-width: min(90vw, 360px);
+    text-align: center;
+    font-size: 0.75rem;
+    opacity: 0.7;
+    line-height: 1.3;
+  }

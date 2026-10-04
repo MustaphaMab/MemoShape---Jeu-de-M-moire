@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+
+  <!-- Fait fonctionner le site correctement sur smartphone (largeur = largeur de l'écran) -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+
+  <!-- Le jeu est toujours sombre : on le dit au navigateur pour qu'il ne recolore rien tout seul -->
+  <meta name="color-scheme" content="dark">
+
+  <!-- Titre affiché dans l'onglet du navigateur -->
+  <title>Test ta mémoire !</title>
+
+  <!-- Relie la page au fichier style.css (l'apparence), placé dans le même dossier -->
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <!-- =====================================================
+       CE QUE LE JOUEUR VOIT (le HTML)
+       ===================================================== -->
+
+  <h1>Test ta mémoire !</h1>
+
+  <!-- Niveau actuel et record (les chiffres sont modifiés par le JavaScript) -->
+  <div class="barre-score">
+    <span>Niveau : <b id="niveau">0</b></span>
+    <span>Record : <b id="record">0</b></span>
+  </div>
+
+  <!-- La croix : 4 flèches (le triangle est dessiné par le CSS) + le message au centre.
+       L'ordre ici n'a pas d'importance, c'est le CSS qui les place. -->
+  <div id="grille">
+    <button class="fleche" id="haut"   aria-label="Haut"></button>
+    <button class="fleche" id="gauche" aria-label="Gauche"></button>
+    <div id="message"><span id="texte-message">Regardez, puis répétez</span></div>
+    <button class="fleche" id="droite" aria-label="Droite"></button>
+    <button class="fleche" id="bas"    aria-label="Bas"></button>
+  </div>
+
+  <button id="bouton-jouer">Jouer</button>
+
+  <small>Ce site mesure sa fréquentation de façon anonyme (GoatCounter, sans cookies ni données personnelles). Votre record est enregistré uniquement sur votre appareil.</small>
+
+  <script>
+    /* =====================================================
+       LE JEU (le JavaScript)
+       Le principe :
+       1. Le jeu allume une suite de flèches.
+       2. Le joueur la répète.
+       3. Si c'est juste, on ajoute une flèche et on recommence.
+          Si c'est faux, c'est perdu.
+       ===================================================== */
+
+    /* --- Petit raccourci ---
+       Au lieu d'écrire document.getElementById("haut") à chaque fois,
+       on écrit simplement el("haut"). */
+    const el = (id) => document.getElementById(id);
+
+    /* =====================================================
+       LES SONS DU JEU (API Web Audio native)
+       Génère des sons directement par le navigateur.
+       ===================================================== */
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    /* Fréquences en Hertz pour chaque flèche (Do, Mi, Sol, Do grave) */
+    const FREQUENCES = {
+      haut: 523.25,
+      gauche: 329.63,
+      droite: 392.00,
+      bas: 261.63
+    };
+
+    /* Joue la note associée à une flèche */
+    function jouerSon(direction, duree = 0.3) {
+      if (audioCtx.state === "suspended") audioCtx.resume();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+
+      osc.type = "sine";
+      osc.frequency.value = FREQUENCES[direction] || 200;
+
+      gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duree);
+
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      osc.start();
+      osc.stop(audioCtx.currentTime + duree);
+    }
+
+    /* Joue un son grave d'erreur quand le joueur se trompe */
+    function jouerSonErreur() {
+      if (audioCtx.state === "suspended") audioCtx.resume();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(60, audioCtx.currentTime + 0.4);
+
+      gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.4);
+
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.4);
+    }
+
+    /* Petit jingle musical de victoire pour les paliers (ex. tous les 5 niveaux) */
+    async function jouerSonVictoire() {
+      if (audioCtx.state === "suspended") audioCtx.resume();
+      const notes = [261.63, 329.63, 392.00, 523.25];
+      for (let i = 0; i < notes.length; i++) {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = notes[i];
+        gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.15);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.15);
+        await attendre(100);
+      }
+    }
+
+    /* --- Les 4 directions possibles ---
+       Chaque nom correspond à l'id d'un bouton dans le HTML. */
+    const DIRECTIONS = ["haut", "bas", "gauche", "droite"];
+
+    /* --- Les variables du jeu (elles changent pendant la partie) --- */
+    let sequence = [];      // la suite à retenir, par exemple ["haut", "gauche", "haut"]
+    let position = 0;       // où en est le joueur dans la suite (0 = première flèche)
+    let etat = "attente";   // ce que fait le jeu : "attente", "montre", "joueur" ou "bravo"
+    let record = 0;         // meilleur niveau atteint
+
+    /* --- Récupérer le record sauvegardé sur l'appareil ---
+       localStorage garde une petite information dans le navigateur.
+       try/catch : si le navigateur refuse, le jeu continue quand même. */
+    try {
+      record = Number(localStorage.getItem("fleches-best")) || 0;
+    } catch (erreur) {}
+    el("record").textContent = record;
+
+    /* --- Fonction "attendre" ---
+       Permet de faire une pause de quelques millisecondes.
+       Exemple : await attendre(500) = pause d'une demi-seconde. */
+    const attendre = (ms) => new Promise((fini) => setTimeout(fini, ms));
+
+    /* --- Allumer une flèche pendant un court instant ---
+       On joue le son, on ajoute la classe "allumee" (voir le CSS), on attend, puis on l'enlève. */
+    async function allumer(direction, duree = 350) {
+      jouerSon(direction, duree / 1000);
+      const bouton = el(direction);
+      bouton.classList.add("allumee");
+      await attendre(duree);
+      bouton.classList.remove("allumee");
+    }
+
+    /* --- Montrer la suite au joueur --- */
+    async function montrerSequence() {
+      etat = "montre"; // pendant ce temps, les clics du joueur sont ignorés
+      el("texte-message").textContent = "Regardez…";
+
+      // Plus la suite est longue, plus les flèches s'allument vite (minimum 180 ms)
+      const vitesse = Math.max(180, 380 - sequence.length * 12);
+
+      await attendre(500);
+      for (const direction of sequence) {
+        await allumer(direction, vitesse);
+        await attendre(120); // petite pause entre deux flèches
+      }
+
+      // C'est maintenant au joueur de jouer
+      etat = "joueur";
+      position = 0;
+      el("texte-message").textContent = "À vous !";
+    }
+
+    /* --- Ajouter une flèche au hasard, puis montrer la suite --- */
+    function ajouterFleche() {
+      const hasard = Math.floor(Math.random() * 4); // un nombre entre 0 et 3
+      sequence.push(DIRECTIONS[hasard]);
+      montrerSequence();
+    }
+
+    /* --- Démarrer une nouvelle partie --- */
+    function commencer() {
+      sequence = [];
+      el("niveau").textContent = 0;
+      el("bouton-jouer").style.display = "none"; // on cache le bouton pendant la partie
+      ajouterFleche();
+    }
+
+    /* --- Le joueur appuie sur une flèche --- */
+    async function appuyer(direction) {
+      // Si ce n'est pas au joueur de jouer, on ignore
+      if (etat !== "joueur") return;
+
+      allumer(direction, 150);
+
+      // Mauvaise flèche : la partie est perdue
+      if (direction !== sequence[position]) {
+        jouerSonErreur(); // Son de défaite
+
+        etat = "attente";
+        const niveauAtteint = sequence.length - 1;
+
+        // Nouveau record ? On le garde et on le sauvegarde
+        if (niveauAtteint > record) {
+          record = niveauAtteint;
+          el("record").textContent = record;
+          try {
+            localStorage.setItem("fleches-best", record);
+          } catch (erreur) {}
+        }
+
+        el("texte-message").textContent = "Raté ! Niveau " + niveauAtteint;
+        el("bouton-jouer").textContent = "Rejouer";
+        el("bouton-jouer").style.display = ""; // on réaffiche le bouton
+        return;
+      }
+
+      // Bonne flèche : on passe à la suivante
+      position++;
+
+      // Toute la suite est réussie : bravo, on ajoute une flèche
+      if (position === sequence.length) {
+        etat = "bravo";
+        const niveauAtteint = sequence.length;
+        el("niveau").textContent = niveauAtteint;
+
+        // --- PALIER TOUS LES 5 NIVEAUX (5, 10, 15...) ---
+        if (niveauAtteint % 5 === 0) {
+          el("texte-message").textContent = "🔥 " + niveauAtteint + " d'affilée !";
+          jouerSonVictoire();
+
+          // Lancer de confettis si la bibliothèque externe est chargée
+          if (typeof confetti === "function") {
+            confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
+          }
+
+          await attendre(1200); // Pause plus longue pour la célébration
+        } else {
+          el("texte-message").textContent = "Bravo !";
+          await attendre(700);
+        }
+
+        ajouterFleche();
+      }
+    }
+
+    /* =====================================================
+       LES COMMANDES : clavier, doigt et souris
+       ===================================================== */
+
+    /* --- Clavier : flèches du clavier, Espace et Entrée --- */
+    addEventListener("keydown", (evenement) => {
+      const touches = {
+        ArrowUp: "haut",
+        ArrowDown: "bas",
+        ArrowLeft: "gauche",
+        ArrowRight: "droite",
+      };
+      const direction = touches[evenement.key];
+
+      if (direction) {
+        evenement.preventDefault(); // empêche la page de défiler avec les flèches
+        appuyer(direction);
+      } else if ((evenement.key === " " || evenement.key === "Enter") && etat === "attente") {
+        evenement.preventDefault();
+        commencer(); // Espace ou Entrée = lancer une partie
+      }
+    });
+
+    /* --- Souris et écran tactile : toucher une flèche colorée --- */
+    DIRECTIONS.forEach((direction) => {
+      el(direction).addEventListener("pointerdown", (evenement) => {
+        evenement.preventDefault();
+        appuyer(direction);
+      });
+    });
+
+    /* --- Bouton "Jouer" / "Rejouer" --- */
+    el("bouton-jouer").addEventListener("click", commencer);
+  </script>
+
+  <!-- Bibliothèque externe de confettis -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.4/dist/confetti.browser.min.js"></script>
+
+  <!-- Compteur de visites GoatCounter (anonyme, sans cookies).
+       "jeux" est votre code GoatCounter : ne le changez pas. -->
+  <script data-goatcounter="https://jeux.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+</body>
+</html>
